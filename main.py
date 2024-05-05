@@ -33,15 +33,10 @@ def email_alert(subject, body, to):
     server.send_message(msg)
 
     server.quit()
-
-def generate_password(length=8):
-    characters = string.ascii_letters + string.digits + string.punctuation
-    password = ''.join(random.choice(characters) for _ in range(length))
-    return password
-
+    
 async def testfunction():
     while True:
-        # Вызываем функцию с задержкой в 24 часа
+        # Вызываем функцию с задержкой в 1 час
         await asyncio.sleep(60 * 60)
         print("Success")
         async for user in users_collection.find({}):
@@ -54,10 +49,6 @@ async def testfunction():
                 {"$set": {"hashed_password": pwd_context.hash(generated_pass)}}
 							)
 
-def startup_event(): 
-    asyncio.create_task(testfunction())
-
-app.on_event("startup")(startup_event)
 # Настройка CORS политики
 
 app.add_middleware(
@@ -69,8 +60,8 @@ app.add_middleware(
 )
 
 # Настройки для MongoDB
-MONGO_DB_URL = "mongodb+srv://djtimon100:2005200ba@cluster0.uaks0oj.mongodb.net/"  # Замените на ваш URL MongoDB
-MONGO_DB_NAME = "testdatabase"  # Замените на вашу базу данных
+MONGO_DB_URL = "mongodb+srv://djtimon100:2005200ba@cluster0.uaks0oj.mongodb.net/"  
+MONGO_DB_NAME = "VladTestDataBase"
 
 # Создаем подключение к MongoDB
 client = AsyncIOMotorClient(MONGO_DB_URL)
@@ -79,15 +70,20 @@ db = client[MONGO_DB_NAME]
 # Класс модели пользователя
 class User(BaseModel):
     email: str
+class UserVerify(User):
+    verify_code: int
 
 # Класс модели для хранения пароля
 class UserInDB(User):
     hashed_password: str
-
+    verify: bool = False
+    firstName: str = ""
+    lastName: str = ""
 # Класс модели для создания пользователя
 class UserCreate(User):
     password: str
-
+    firstName: str = ""
+    lastName: str = ""
 
 # Класс модели для генерации токена
 class Token(BaseModel):
@@ -114,6 +110,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 # Создаем коллекцию для пользователей в MongoDB
 users_collection = db["users"]
+verify_collection = db["verify_users"]
+
+@app.get("/")
+async def test(): 
+    return {"detail": "Hello World"}
 
 # Регистрация пользователя
 @app.post("/register", response_model=User)
@@ -128,10 +129,42 @@ async def register(user: UserCreate):
     
     # Создаем пользователя в базе данных
     user_in_db = UserInDB(**user.dict(), hashed_password=hashed_password)
-    result = await users_collection.insert_one(user_in_db.dict())
+    await users_collection.insert_one(user_in_db.dict())
     
+    verify_code = random.randint(100000, 999999)
+
+    email_alert("Код подтвержение", f"{verify_code}", user.email)
+
+    user_verify_in_db = UserVerify(**user.dict(), verify_code=verify_code)
+    await verify_collection.insert_one(user_verify_in_db.dict())
+
     return user
 
+@app.post("/verify_user", response_model=Token)
+async def verify_user(user: UserVerify):
+    user_in_db: UserVerify = await verify_collection.find_one({"email": user.email}) 
+    print(user_in_db)
+    if not user_in_db:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    
+    if not user_in_db.get("verify_code"):
+        raise HTTPException(status_code=999, detail="Я не нашёл сука")
+
+    if user.verify_code != user_in_db.get("verify_code"):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    
+    await verify_collection.delete_one({"email": user.email})
+    await users_collection.update_one(
+                {"email": user.email},
+                {"$set": {"verify": True}})
+
+    # Генерируем токен
+    access_token_expires = timedelta(hours=6)
+    access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
+
+    return {"access_token": access_token, "token_type": "bearer"}
+
+    
 # Аутентификация пользователя и выдача токена
 @app.post("/login", response_model=Token)
 async def login(user: UserCreate):
@@ -139,13 +172,16 @@ async def login(user: UserCreate):
     user_in_db = await users_collection.find_one({"email": user.email})
     if not user_in_db or not pwd_context.verify(user.password, user_in_db["hashed_password"]):
         raise HTTPException(status_code=400, detail="Invalid credentials")
-    
+
+    if user_in_db.get("verify") == False:
+        raise HTTPException(status_code=400, detail="Not verify")
+
     # Генерируем токен
     access_token_expires = timedelta(minutes=15)
     access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
