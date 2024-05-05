@@ -10,9 +10,8 @@ from fastapi.responses import RedirectResponse
 import random
 from smtplib import SMTP
 from email.message import EmailMessage
-
+import asyncio
 app = FastAPI()
-
 
 origins = ["*"]
 
@@ -35,6 +34,42 @@ db = client[MONGO_DB_NAME]
 # Создаем коллекцию для пользователей в MongoDB
 users_collection = db["users"]
 verify_collection = db["verify_users"]
+
+
+# Секретный ключ для генерации и валидации токена
+SECRET_KEY = "TIMURTIMURTIMUR"
+ALGORITHM = "HS256"
+
+# Контекст для хэширования паролей
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Генерация токена
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def email_alert(subject, body, to):
+    msg = EmailMessage()
+    msg.set_content(body)
+
+    msg['subject'] = subject
+    msg['to'] = to
+
+    user = "testemailfordev1@gmail.com"
+    password = "fxbtkryvevzerdyv"
+
+    server = SMTP("smtp.gmail.com", 25, timeout=10000)
+    server.starttls()
+    server.login(user, password)
+    server.send_message(msg)
+
+    server.quit()
 
 # Модели 
 class User(BaseModel):
@@ -133,38 +168,3 @@ async def login(user: UserCreate):
     access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     
     return {"access_token": access_token, "token_type": "bearer"}
-
-# Секретный ключ для генерации и валидации токена
-SECRET_KEY = "TIMURTIMURTIMUR"
-ALGORITHM = "HS256"
-
-# Контекст для хэширования паролей
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Генерация токена
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def email_alert(subject, body, to):
-    msg = EmailMessage()
-    msg.set_content(body)
-
-    msg['subject'] = subject
-    msg['to'] = to
-
-    user = "testemailfordev1@gmail.com"
-    password = "fxbtkryvevzerdyv"
-
-    server = SMTP("smtp.gmail.com", 25, timeout=10000)
-    server.starttls()
-    server.login(user, password)
-    server.send_message(msg)
-
-    server.quit()
