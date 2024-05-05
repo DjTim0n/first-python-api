@@ -1,16 +1,12 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
+from jose import jwt
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
-import asyncio
-from bson.objectid import ObjectId
 import random
-import string
 from smtplib import SMTP
 from email.message import EmailMessage
 
@@ -33,21 +29,6 @@ def email_alert(subject, body, to):
     server.send_message(msg)
 
     server.quit()
-    
-async def testfunction():
-    while True:
-        # Вызываем функцию с задержкой в 1 час
-        await asyncio.sleep(60 * 60)
-        print("Success")
-        async for user in users_collection.find({}):
-            id = user.get("_id")
-            if id:  
-              generated_pass = generate_password()
-              email_alert("У вас сменился пароль", generated_pass, user.get("email"))
-              users_collection.update_one(
-                {"_id": ObjectId(id)},
-                {"$set": {"hashed_password": pwd_context.hash(generated_pass)}}
-							)
 
 # Настройка CORS политики
 
