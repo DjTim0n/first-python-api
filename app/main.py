@@ -5,7 +5,8 @@ from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware 
+from fastapi.responses import RedirectResponse
 import random
 from smtplib import SMTP
 from email.message import EmailMessage
@@ -13,28 +14,11 @@ from email.message import EmailMessage
 app = FastAPI()
 
 
-def email_alert(subject, body, to):
-    msg = EmailMessage()
-    msg.set_content(body)
-
-    msg['subject'] = subject
-    msg['to'] = to
-
-    user = "testemailfordev1@gmail.com"
-    password = "fxbtkryvevzerdyv"
-
-    server = SMTP("smtp.gmail.com", 25, timeout=10000)
-    server.starttls()
-    server.login(user, password)
-    server.send_message(msg)
-
-    server.quit()
-
-# Настройка CORS политики
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,50 +32,37 @@ MONGO_DB_NAME = "VladTestDataBase"
 client = AsyncIOMotorClient(MONGO_DB_URL)
 db = client[MONGO_DB_NAME]
 
-# Класс модели пользователя
+# Создаем коллекцию для пользователей в MongoDB
+users_collection = db["users"]
+verify_collection = db["verify_users"]
+
+# Модели 
 class User(BaseModel):
     email: str
+
 class UserVerify(User):
     verify_code: int
 
-# Класс модели для хранения пароля
 class UserInDB(User):
     hashed_password: str
     verify: bool = False
     firstName: str = ""
     lastName: str = ""
-# Класс модели для создания пользователя
+
 class UserCreate(User):
     password: str
     firstName: str = ""
     lastName: str = ""
 
-# Класс модели для генерации токена
 class Token(BaseModel):
     access_token: str
     token_type: str
 
-# Секретный ключ для генерации и валидации токена
-SECRET_KEY = "TIMURTIMURTIMUR"
-ALGORITHM = "HS256"
+# Точки:
 
-# Контекст для хэширования паролей
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Генерация токена
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-# Создаем коллекцию для пользователей в MongoDB
-users_collection = db["users"]
-verify_collection = db["verify_users"]
+@app.get("/swagger")
+async def swagger():
+    return RedirectResponse("/docs")
 
 @app.get("/")
 async def test(): 
@@ -162,3 +133,38 @@ async def login(user: UserCreate):
     access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+# Секретный ключ для генерации и валидации токена
+SECRET_KEY = "TIMURTIMURTIMUR"
+ALGORITHM = "HS256"
+
+# Контекст для хэширования паролей
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Генерация токена
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def email_alert(subject, body, to):
+    msg = EmailMessage()
+    msg.set_content(body)
+
+    msg['subject'] = subject
+    msg['to'] = to
+
+    user = "testemailfordev1@gmail.com"
+    password = "fxbtkryvevzerdyv"
+
+    server = SMTP("smtp.gmail.com", 25, timeout=10000)
+    server.starttls()
+    server.login(user, password)
+    server.send_message(msg)
+
+    server.quit()
