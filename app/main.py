@@ -11,6 +11,7 @@ import random
 from smtplib import SMTP
 from email.message import EmailMessage
 import asyncio
+import uvicorn
 app = FastAPI()
 
 origins = ["*"]
@@ -168,3 +169,6 @@ async def login(user: UserCreate):
     access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
